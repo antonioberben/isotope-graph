@@ -17,7 +17,6 @@ package srv
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -70,7 +69,7 @@ func shouldSkipRequest(cmd script.RequestCommand) bool {
 }
 
 // Execute sends an HTTP request to another service. Assumes DNS is available
-// which maps exe.HostName to the relevant URL to reach the service.
+// which maps exe.ServiceName to the relevant URL to reach the service.
 func executeRequestCommand(
 	cmd script.RequestCommand,
 	forwardableHeader http.Header,
@@ -80,8 +79,11 @@ func executeRequestCommand(
 		return nil
 	}
 
-	destName := cmd.HostName
-	_, ok := serviceTypes[destName]
+	// todo switch ServiceName to CallOverride
+	//destName := cmd.ServiceName
+	destName := cmd.CallOverride
+
+	_, ok := serviceTypes[cmd.ServiceName]
 	if !ok {
 		return fmt.Errorf("service %s does not exist", destName)
 	}
@@ -94,14 +96,14 @@ func executeRequestCommand(
 	// https://golang.org/pkg/net/http/#Response
 	defer func() {
 		// Drain and close the body to let the Transport reuse the connection
-		io.Copy(ioutil.Discard, response.Body)
+		io.Copy(io.Discard, response.Body)
 		response.Body.Close()
 		prometheus.RecordRequestSent(destName, uint64(cmd.Size))
 	}()
 
 	log.Debugf("%s responded with %s", destName, response.Status)
 	if response.StatusCode != http.StatusOK {
-		body, err := ioutil.ReadAll(response.Body)
+		body, err := io.ReadAll(response.Body)
 		if err != nil {
 			body = []byte(fmt.Sprintf("failed to read body: %v", err))
 		}
